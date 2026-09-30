@@ -112,6 +112,14 @@ void WifiBoard::StartNetwork() {
     }
 
     // Try to connect or enter config mode
+    // --- Hardcoded WiFi (dev only) ---
+    {
+        auto result = SsidManager::GetInstance().AddSsid("TP-Link_5BC8", "33714592");
+        if (result != SsidMutationResult::kApplied) {
+            ESP_LOGW(TAG, "Hardcoded SSID not applied (%d)", static_cast<int>(result));
+        }
+    }
+
     TryWifiConnect();
 }
 

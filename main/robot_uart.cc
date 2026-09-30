@@ -147,7 +147,6 @@ bool RobotUart::Initialize() {
     }
 
     initialized_ = true;
-    StartAckReader();
     return true;
 }
 

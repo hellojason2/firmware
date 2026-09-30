@@ -14,7 +14,6 @@
 #include "game/flappy_config.h"
 #include "game/flappy_assets.h"
 #include "ui/menu_ui.h"
-#include "music/music_app.h"
 #include "wifi_board.h"
 
 #include <string>
@@ -34,10 +33,10 @@ std::function<void(const std::vector<int16_t>&)> g_sound_player;  // phat SFX ga
 FlappySounds g_sounds;                  // SFX nap 1 lan tu SD, dung lai nhieu luot
 bool g_slave_ready = false;
 
-// Menu: 4 app - 0=Chatbox, 1=Game, 2=Music, 3=Speed.
-constexpr int kMenuCount = 4;
+// Menu: 3 app - 0=Chatbox, 1=Game, 2=Speed.
+constexpr int kMenuCount = 3;
 int g_menu_sel = 0;
-lv_obj_t* g_menu_box[kMenuCount] = { nullptr, nullptr, nullptr, nullptr };
+lv_obj_t* g_menu_box[kMenuCount] = { nullptr, nullptr, nullptr };
 lv_obj_t* g_menu_status = nullptr;      // dong trang thai slave
 lv_obj_t* g_menu_sd_status = nullptr;   // dong trang thai the nho
 MenuStrings g_menu_strings;             // text menu (SD hoac default)
@@ -51,14 +50,6 @@ constexpr int kSpeedStep = 20;
 int g_limb_speed_pct = 100;
 lv_obj_t* g_speed_value_label = nullptr;
 lv_obj_t* g_speed_bar = nullptr;
-
-// Music
-constexpr int kMusicVisible = 5;        // so dong danh sach hien cung luc
-std::vector<std::string> g_music_files;
-int g_music_sel = 0;
-int g_music_playing_idx = -1;
-lv_obj_t* g_music_line[kMusicVisible] = { nullptr };
-lv_obj_t* g_music_state_label = nullptr;
 
 // Game (Flappy primitive). Kich thuoc/layout la hang so; vat ly (gravity, jump,
 // pipe_speed, gap, fps) lay tu FlappyConfig (SD hoac default).
@@ -166,8 +157,6 @@ void DestroyOverlay() {
     for (int i = 0; i < kMenuCount; ++i) g_menu_box[i] = nullptr;
     g_menu_status = nullptr;
     g_menu_sd_status = nullptr;
-    for (int i = 0; i < kMusicVisible; ++i) g_music_line[i] = nullptr;
-    g_music_state_label = nullptr;
     g_speed_value_label = nullptr;
     g_speed_bar = nullptr;
     g_game.bird = nullptr;
@@ -233,10 +222,9 @@ void BuildMenu() {
     const char* names[kMenuCount] = {
         g_menu_strings.chatbox.c_str(),
         g_menu_strings.game.c_str(),
-        g_menu_strings.music.c_str(),
         "Tốc độ",   // Dùng chuỗi trực tiếp để tiết kiệm SRAM khi khởi động.
     };
-    const int box_x[kMenuCount] = { -171, -57, 57, 171 };
+    const int box_x[kMenuCount] = { -114, 0, 114 };
     for (int i = 0; i < kMenuCount; ++i) {
         lv_obj_t* box = lv_obj_create(g_overlay);
         lv_obj_remove_style_all(box);
@@ -520,110 +508,6 @@ void GameLeft() {
 }
 
 // ---------------------------------------------------------------------------
-// Music
-// ---------------------------------------------------------------------------
-const char* MusicStateText() {
-    switch (MusicGetState()) {
-        case MusicState::Playing: return "Dang phat  (cham 2 nut de tam dung)";
-        case MusicState::Paused:  return "Tam dung  (cham 2 nut de phat)";
-        default:                  return "Da dung  (cham 2 nut de phat)";
-    }
-}
-
-void UpdateMusicList() {
-    int n = (int)g_music_files.size();
-    // Cua so hien thi bao quanh muc dang chon.
-    int start = g_music_sel - kMusicVisible / 2;
-    if (start > n - kMusicVisible) start = n - kMusicVisible;
-    if (start < 0) start = 0;
-
-    for (int row = 0; row < kMusicVisible; ++row) {
-        if (g_music_line[row] == nullptr) continue;
-        int idx = start + row;
-        if (n == 0 && row == 0) {
-            lv_label_set_text(g_music_line[row], g_menu_strings.music_empty.c_str());
-            lv_obj_set_style_text_color(g_music_line[row], lv_color_hex(0x98A2B3), 0);
-            continue;
-        }
-        if (idx < 0 || idx >= n) {
-            lv_label_set_text(g_music_line[row], "");
-            continue;
-        }
-        bool sel = (idx == g_music_sel);
-        bool playing = (idx == g_music_playing_idx && MusicGetState() == MusicState::Playing);
-        char buf[96];
-        snprintf(buf, sizeof(buf), "%s%s", playing ? "> " : (sel ? "  " : "  "),
-                 g_music_files[idx].c_str());
-        lv_label_set_text(g_music_line[row], buf);
-        lv_obj_set_style_text_color(g_music_line[row],
-            lv_color_hex(sel ? 0xFDB022 : 0xE4E7EC), 0);
-    }
-    if (g_music_state_label != nullptr) {
-        lv_label_set_text(g_music_state_label, MusicStateText());
-    }
-}
-
-void BuildMusic() {
-    EnsureOverlay();
-    lv_obj_set_style_bg_color(g_overlay, lv_color_hex(0x101828), 0);
-
-    lv_obj_t* title = MakeLabel(g_overlay, g_menu_strings.music.c_str(), 0xFFFFFF);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
-
-    for (int row = 0; row < kMusicVisible; ++row) {
-        lv_obj_t* l = MakeLabel(g_overlay, "", 0xE4E7EC);
-        lv_obj_set_width(l, 440);
-        lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
-        lv_obj_align(l, LV_ALIGN_TOP_LEFT, 24, 46 + row * 26);
-        g_music_line[row] = l;
-    }
-
-    g_music_state_label = MakeLabel(g_overlay, "", 0x98A2B3);
-    lv_obj_align(g_music_state_label, LV_ALIGN_BOTTOM_MID, 0, -60);
-
-    MakeHintLabel(g_overlay,
-        "Trái/phải: đổi bài   Chạm hai nút: phát/dừng\nGiữ 3 giây: menu", -8);
-
-    UpdateMusicList();
-}
-
-void MusicSelectMove(int delta) {
-    int n = (int)g_music_files.size();
-    if (n <= 0) {
-        PlaySfx(g_menu_sounds.error);
-        return;
-    }
-    g_music_sel = (g_music_sel + delta % n + n) % n;
-    UpdateMusicList();
-    PlaySfx(g_menu_sounds.move);
-}
-
-void MusicToggle() {
-    int n = (int)g_music_files.size();
-    if (n <= 0) {
-        PlaySfx(g_menu_sounds.error);
-        return;
-    }
-    MusicState st = MusicGetState();
-    if (st == MusicState::Playing && g_music_playing_idx == g_music_sel) {
-        MusicPause();
-        SendToSlave("DANCE:MUSIC:STOP");
-    } else if (st == MusicState::Paused && g_music_playing_idx == g_music_sel) {
-        MusicResume();
-        SendToSlave("DANCE:MUSIC:START");
-    } else {
-        if (MusicPlay(g_music_files[g_music_sel])) {
-            g_music_playing_idx = g_music_sel;
-            SendToSlave("DANCE:MUSIC:START");
-            PlaySfx(g_menu_sounds.select);
-        } else {
-            PlaySfx(g_menu_sounds.error);
-        }
-    }
-    UpdateMusicList();
-}
-
-// ---------------------------------------------------------------------------
 // Speed (chinh toc do tay+dau cua slave: dance nhac + gesture cham nut)
 // ---------------------------------------------------------------------------
 void SendLimbSpeed() {
@@ -711,20 +595,6 @@ void SpeedReset() {
 void AppManagerInit() {
     g_mode = AppMode::Chatbox;
     g_overlay = nullptr;
-
-    MusicPlayerInit();
-    // Bai nhac ket thuc tu nhien (music task) -> marshal sang main task: bao slave
-    // ngung nhay + cap nhat UI neu dang o Music.
-    MusicSetOnEnd([] {
-        Application::GetInstance().Schedule([] {
-            SendToSlave("DANCE:MUSIC:STOP");
-            g_music_playing_idx = -1;
-            if (g_mode == AppMode::Music) {
-                DisplayLockGuard lock(GetDisplay());
-                UpdateMusicList();
-            }
-        });
-    });
 }
 
 void AppManagerSetSlaveSender(std::function<void(const char*)> sender) {
@@ -759,11 +629,6 @@ static void SwitchToInternal(AppMode mode) {
         FlappySpritesFree(&g_game.sprites);  // tra PSRAM cua sprite
         g_game.use_sprites = false;
     }
-    if (g_mode == AppMode::Music) {
-        MusicStop();
-        SendToSlave("DANCE:MUSIC:STOP");   // dam bao slave ngung nhay + ve nghi
-        g_music_playing_idx = -1;
-    }
     DestroyOverlay();
 
     g_mode = mode;
@@ -778,14 +643,6 @@ static void SwitchToInternal(AppMode mode) {
             BuildGame();
             SendToSlave("MODE:GAME");
             PlaySfx(g_menu_sounds.open_game);
-            break;
-        case AppMode::Music:
-            g_music_files = MusicScanFiles();
-            g_music_sel = 0;
-            g_music_playing_idx = -1;
-            BuildMusic();
-            SendToSlave("MODE:MUSIC");
-            PlaySfx(g_menu_sounds.select);
             break;
         case AppMode::Speed:
             BuildSpeed();
@@ -864,11 +721,6 @@ void AppHandleInputLeft() {
             GameLeft();
             break;
         }
-        case AppMode::Music: {
-            DisplayLockGuard lock(GetDisplay());
-            MusicSelectMove(-1);
-            break;
-        }
         case AppMode::Speed: {
             DisplayLockGuard lock(GetDisplay());
             SpeedAdjust(-kSpeedStep);   // Trai: cham lai
@@ -902,11 +754,6 @@ void AppHandleInputRight() {
             GameFlap();
             break;
         }
-        case AppMode::Music: {
-            DisplayLockGuard lock(GetDisplay());
-            MusicSelectMove(1);
-            break;
-        }
         case AppMode::Speed: {
             DisplayLockGuard lock(GetDisplay());
             SpeedAdjust(kSpeedStep);   // Phai: nhanh hon
@@ -922,8 +769,7 @@ void AppHandleInputRight() {
 AppMode MenuSelToMode(int sel) {
     switch (sel) {
         case 1:  return AppMode::Game;
-        case 2:  return AppMode::Music;
-        case 3:  return AppMode::Speed;
+        case 2:  return AppMode::Speed;
         default: return AppMode::Chatbox;
     }
 }
@@ -937,11 +783,6 @@ void AppHandleInputBothClick() {
         case AppMode::Game: {
             DisplayLockGuard lock(GetDisplay());
             GameStartOrRestart();
-            break;
-        }
-        case AppMode::Music: {
-            DisplayLockGuard lock(GetDisplay());
-            MusicToggle();
             break;
         }
         case AppMode::Speed: {

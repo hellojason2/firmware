@@ -1899,8 +1899,8 @@ bool McpServer::StartLessonAssetSyncTask(
         return false;
     }
 
-    // Keep internal RAM available for the HTTPS receive task. This worker only
-    // performs network and SD I/O, so no flash-writing path may overlap it.
+    // Internal RAM stack: this worker performs network and SD I/O. No
+    // flash-writing path may overlap it.
     if (xTaskCreateWithCaps(
             &McpServer::LessonAssetSyncTaskEntry,
             "lesson_sd_sync",
@@ -1908,7 +1908,7 @@ bool McpServer::StartLessonAssetSyncTask(
             context,
             tskIDLE_PRIORITY + 1,
             nullptr,
-            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
+            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) != pdPASS) {
         delete context;
         PublishLessonAssetSyncCompletion(id, false, {}, request_context, false);
         ESP_LOGE(TAG, "lesson asset sync worker creation failed");

@@ -11,7 +11,6 @@ enum class AppMode {
     Chatbox = 0,
     Menu,
     Game,
-    Music,
     Speed,   // chinh toc do tay+dau cua slave (dance nhac + gesture cham nut)
 };
 

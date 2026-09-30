@@ -966,8 +966,8 @@ def test_claim_token_copies_are_zeroized_across_fetch_worker_handoffs():
     source = read("main/application.cc")
     dispatch_body = function_body(source, "bool Application::DispatchPendingTbotClaimFetch")
     worker_body = function_body(source, "void Application::ClaimFetchTask")
-
-    helper = function_body(source, "static void SecureClearString")
+    helper_sig = "inline void SecureClearString" if "inline void SecureClearString" in source else "static void SecureClearString"
+    helper = function_body(source, helper_sig)
     assert "volatile char*" in helper
     assert "value.clear();" in helper
     assert "SecureClearString(ctx->token);" in dispatch_body

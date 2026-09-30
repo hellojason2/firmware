@@ -19,16 +19,16 @@ main/assets/lang_config.h
 main/mmap_generate_emoji.h
 mmap_generate_*.h
 *.bin
+!release/*.bin
 
 # sdkconfig (project uses sdkconfig.defaults.* instead)
-sdkconfig
 sdkconfig.*
 !sdkconfig.defaults
 !sdkconfig.defaults.*
 
 # Editor / tooling
 .worktrees/
-.vscode/
+.vscode/settings.json
 .devcontainer/
 .clangd
 .cache

@@ -95,6 +95,7 @@ public:
      * It handles all events including network, state changes, and user interactions.
      */
     void Run();
+    void LogPeriodicMetrics();
 
     DeviceState GetDeviceState() const { return state_machine_.GetState(); }
     bool TakeChatCaption(ChatCaptionMailbox::Message& caption);

@@ -16,6 +16,7 @@
 #include "display/lcd_display.h"
 #include "display/lvgl_display/jpg/jpeg_to_image.h"
 #include "lesson_mjpeg_mp4.h"
+#include <esp_attr.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -146,6 +147,10 @@ struct ProductionRendererContext {
 
 std::unique_ptr<ProductionRendererContext> g_production_context;
 std::unique_ptr<LessonCinematicRenderer> g_production_renderer;
+
+constexpr uint32_t kProductionRendererStackDepth = 32 * 1024;
+DRAM_ATTR StaticTask_t g_production_renderer_task_buffer;
+DRAM_ATTR StackType_t g_production_renderer_task_stack[kProductionRendererStackDepth];
 
 void* ProductionAllocate(void*, std::size_t size) {
     return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -297,7 +302,9 @@ void ProductionRendererTask(void* raw) {
     if (context != nullptr && context->frame_task_stopped != nullptr) {
         xSemaphoreGive(context->frame_task_stopped);
     }
-    vTaskDeleteWithCaps(nullptr);
+    // Static TCB/stack: park here and let Shutdown delete us from another task,
+    // so the buffers are fully released before any re-create.
+    vTaskSuspend(nullptr);
 }
 
 }  // namespace
@@ -337,10 +344,10 @@ bool InitializeProductionLessonCinematicRenderer(::LcdDisplay* display) {
         ProductionMonotonicMs});
     g_production_context->frame_task_stopped = xSemaphoreCreateBinary();
     if (g_production_context->frame_task_stopped == nullptr ||
-        xTaskCreateWithCaps(ProductionRendererTask, "lesson_cinematic", 32 * 1024,
-                            g_production_context.get(), tskIDLE_PRIORITY + 2,
-                            &g_production_context->frame_task,
-                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
+        (g_production_context->frame_task = xTaskCreateStatic(
+             ProductionRendererTask, "lesson_cinematic", kProductionRendererStackDepth,
+             g_production_context.get(), tskIDLE_PRIORITY + 2,
+             g_production_renderer_task_stack, &g_production_renderer_task_buffer)) == nullptr) {
         ShutdownProductionLessonCinematicRenderer();
         return false;
     }
@@ -407,8 +414,12 @@ void ShutdownProductionLessonCinematicRenderer() {
             xSemaphoreTake(g_production_context->frame_task_stopped,
                            pdMS_TO_TICKS(1000)) != pdTRUE) {
             ESP_LOGE("LessonCinematic", "renderer task stop timed out");
-            vTaskDeleteWithCaps(g_production_context->frame_task);
+        } else {
+            while (eTaskGetState(g_production_context->frame_task) != eSuspended) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
         }
+        vTaskDelete(g_production_context->frame_task);
         g_production_context->frame_task = nullptr;
     }
     if (g_production_context != nullptr &&
